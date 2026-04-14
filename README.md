@@ -41,7 +41,6 @@ In this module, you'll complete:
 
 ### 1. Complete `send_slack_notification` Tool
 
-
 In `server.py`, implement the TODO sections:
 
 ```python
