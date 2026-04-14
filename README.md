@@ -43,6 +43,7 @@ In this module, you'll complete:
 
 In `server.py`, implement the TODO sections:
 
+
 ```python
 @mcp.tool()
 async def send_slack_notification(message: str) -> str:
