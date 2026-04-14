@@ -9,7 +9,7 @@ import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP
 
@@ -177,19 +177,18 @@ async def suggest_template(changes_summary: str, change_type: str) -> str:
 
 
 @mcp.tool()
-async def get_recent_actions_events(limit: int = 10) -> str:
-    """Get recent GitHub Actions events received via webhook.
+def get_recent_actions_events(limit: int = 10) -> list[dict[str, Any]]:
+    """Return the most recent GitHub webhook events."""
+    if not EVENTS_FILE.exists():
+        return []
 
-    Args:
-        limit: Maximum number of events to return (default: 10)
-    """
-    # TODO: Implement this function
-    # 1. Check if EVENTS_FILE exists
-    # 2. Read the JSON file
-    # 3. Return the most recent events (up to limit)
-    # 4. Return empty list if file doesn't exist
+    with open(EVENTS_FILE, "r", encoding="utf-8") as f:
+        events = json.load(f)
 
-    return json.dumps({"message": "TODO: Implement get_recent_actions_events"})
+    if not isinstance(events, list):
+        return []
+
+    return events[-limit:]
 
 
 @mcp.tool()
@@ -197,16 +196,65 @@ async def get_workflow_status(workflow_name: Optional[str] = None) -> str:
     """Get the current status of GitHub Actions workflows.
 
     Args:
-        workflow_name: Optional specific workflow name to filter by
+    workflow_name: Optional specific workflow name to filter by
     """
-    # TODO: Implement this function
-    # 1. Read events from EVENTS_FILE
-    # 2. Filter events for workflow_run events
-    # 3. If workflow_name provided, filter by that name
-    # 4. Group by workflow and show latest status
-    # 5. Return formatted workflow status information
+    if not EVENTS_FILE.exists():
+        return json.dumps([], indent=2)
 
-    return json.dumps({"message": "TODO: Implement get_workflow_status"})
+    try:
+        with open(EVENTS_FILE, "r", encoding="utf-8") as f:
+            events = json.load(f)
+
+        if not isinstance(events, list):
+            return json.dumps([], indent=2)
+
+        workflow_events = []
+
+        for event in events:
+            event_type = event.get("event_type") or event.get("type")
+            payload = event.get("payload", {})
+
+            if event_type != "workflow_run":
+                continue
+
+            workflow_run = payload.get("workflow_run", {})
+            name = workflow_run.get("name") or "unknown"
+
+            if workflow_name and name.lower() != workflow_name.lower():
+                continue
+
+            workflow_events.append(
+                {
+                    "workflow_name": name,
+                    "status": workflow_run.get("status"),
+                    "conclusion": workflow_run.get("conclusion"),
+                    "html_url": workflow_run.get("html_url"),
+                    "updated_at": workflow_run.get("updated_at")
+                    or workflow_run.get("created_at"),
+                    "repository": payload.get("repository", {}).get("full_name"),
+                }
+            )
+
+        latest_by_workflow = {}
+
+        for item in workflow_events:
+            name = item["workflow_name"]
+            current = latest_by_workflow.get(name)
+
+            if current is None:
+                latest_by_workflow[name] = item
+                continue
+
+            current_time = current.get("updated_at") or ""
+            new_time = item.get("updated_at") or ""
+
+            if new_time >= current_time:
+                latest_by_workflow[name] = item
+
+        return json.dumps(list(latest_by_workflow.values()), indent=2)
+
+    except Exception as e:
+        return json.dumps({"error": str(e)}, indent=2)
 
 
 # ===== Module 2: MCP Prompts =====
@@ -215,40 +263,46 @@ async def get_workflow_status(workflow_name: Optional[str] = None) -> str:
 @mcp.prompt()
 async def analyze_ci_results():
     """Analyze recent CI/CD results and provide insights."""
-    # TODO: Implement this prompt
-    # Return a string with instructions for Claude to:
-    # 1. Use get_recent_actions_events()
-    # 2. Use get_workflow_status()
-    # 3. Analyze results and provide insights
-
-    return "TODO: Implement analyze_ci_results prompt"
+    return (
+        "Analyze the recent GitHub Actions activity for this repository. "
+        "First, use get_recent_actions_events() to inspect the latest webhook events. "
+        "Then use get_workflow_status() to summarize the latest workflow states. "
+        "Identify any failed or incomplete workflows, explain what happened in plain language, "
+        "and suggest the next debugging steps."
+    )
 
 
 @mcp.prompt()
 async def create_deployment_summary():
     """Generate a deployment summary for team communication."""
-    # TODO: Implement this prompt
-    # Return a string that guides Claude to create a deployment summary
-
-    return "TODO: Implement create_deployment_summary prompt"
+    return (
+        "Create a deployment summary for the team based on recent GitHub Actions events. "
+        "Use get_recent_actions_events() and get_workflow_status() to identify the latest runs, "
+        "which workflows succeeded or failed, and whether deployment-related jobs completed. "
+        "Write a short summary suitable for sharing with teammates."
+    )
 
 
 @mcp.prompt()
 async def generate_pr_status_report():
     """Generate a comprehensive PR status report including CI/CD results."""
-    # TODO: Implement this prompt
-    # Return a string that guides Claude to combine code changes with CI/CD status
-
-    return "TODO: Implement generate_pr_status_report prompt"
+    return (
+        "Generate a PR status report that combines code review context and CI/CD results. "
+        "Use analyze_file_changes() to inspect the current branch changes, "
+        "then use get_workflow_status() and get_recent_actions_events() to summarize the latest GitHub Actions outcomes. "
+        "Highlight changed files, workflow results, and anything that may block merging."
+    )
 
 
 @mcp.prompt()
 async def troubleshoot_workflow_failure():
     """Help troubleshoot a failing GitHub Actions workflow."""
-    # TODO: Implement this prompt
-    # Return a string that guides Claude through troubleshooting steps
-
-    return "TODO: Implement troubleshoot_workflow_failure prompt"
+    return (
+        "Help troubleshoot a failing GitHub Actions workflow. "
+        "Use get_workflow_status() to find failed workflows and get_recent_actions_events() to inspect recent related events. "
+        "Explain which workflow failed, what its latest status and conclusion mean, "
+        "and give a step-by-step debugging plan the developer should follow next."
+    )
 
 
 if __name__ == "__main__":
