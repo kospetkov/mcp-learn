@@ -8,10 +8,4 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-
       - run: echo "GitHub Actions is working"
-
-      - name: Force failure for Slack alert test
-        run: |
-          echo "Forcing CI failure to test Slack alert"
-          exit 1
